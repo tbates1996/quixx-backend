@@ -19,13 +19,15 @@ type Game struct {
 	Name      string `json:"name"`
 	Id        string `json:"id"`
 	broadcast chan Message
-	//Started   bool
-	clients map[*websocket.Conn]*Client
-	time    time.Time
+	Started   bool `json:"started"`
+	clients   map[*websocket.Conn]*Client
+	time      time.Time
 }
 
 type Client struct {
 	Username string `json:"username"`
+	Ready    bool   `json:"ready"`
+	time     time.Time
 }
 
 type Message struct {
@@ -34,8 +36,7 @@ type Message struct {
 }
 
 type CreateGameParams struct {
-	Name     string `json:"name"`
-	Username string `json:"username"`
+	Name string `json:"name"`
 }
 
 var upgrader = websocket.Upgrader{}
@@ -60,6 +61,7 @@ func postCreateGame(w http.ResponseWriter, r *http.Request) {
 	g := Game{params.Name,
 		xid.New().String(),
 		make(chan Message),
+		false,
 		make(map[*websocket.Conn]*Client),
 		time.Now()}
 	//We create a user here, but we need a socket to store it.
@@ -108,43 +110,49 @@ func wsPage(rw http.ResponseWriter, req *http.Request) {
 			if len(Lobby[gid].clients) < 1 {
 				delete(Lobby, gid)
 			} else {
-				m := make([]string, 0, len(Lobby[gid].clients))
-				for _, val := range Lobby[gid].clients {
-					m = append(m, val.Username)
-				}
-				fmt.Println(m)
-				data, err := json.Marshal(m)
+				err = Lobby[gid].sendReady()
 				if err != nil {
 					http.Error(rw, err.Error(), http.StatusInternalServerError)
-					return
 				}
-				Lobby[gid].broadcast <- Message{"ready", data}
-
 			}
 			break
 		}
 		if msg.Type == "join" {
-			var client Client
+			client := Client{"", false, time.Now()}
 			err = json.Unmarshal(msg.Msg, &client)
 			fmt.Println(client.Username)
 			Lobby[gid].clients[ws] = &client
-			m := make([]string, 0, len(Lobby[gid].clients))
-			for _, val := range Lobby[gid].clients {
-				m = append(m, val.Username)
-			}
-			fmt.Println(m)
-			data, err := json.Marshal(m)
+			err = Lobby[gid].sendReady()
 			if err != nil {
 				http.Error(rw, err.Error(), http.StatusInternalServerError)
-				return
 			}
-			Lobby[gid].broadcast <- Message{"ready", data}
 		} else if msg.Type == "ready" {
-
+			if !Lobby[gid].Started {
+				Lobby[gid].clients[ws].Ready = !Lobby[gid].clients[ws].Ready
+				err = Lobby[gid].sendReady()
+				if err != nil {
+					http.Error(rw, err.Error(), http.StatusInternalServerError)
+				}
+			}
 		} else if msg.Type == "action" {
 
 		}
 	}
+}
+
+func (g Game) sendReady() error {
+	m := make([]*Client, 0, len(g.clients))
+	for _, val := range g.clients {
+		m = append(m, val)
+	}
+	sort.Slice(m, func(i, j int) bool { return m[i].time.Before(m[j].time) })
+	fmt.Println(m)
+	data, err := json.Marshal(m)
+	if err != nil {
+		return err
+	}
+	g.broadcast <- Message{"ready", data}
+	return nil
 }
 
 func handler(rw http.ResponseWriter, req *http.Request) {
