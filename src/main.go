@@ -46,6 +46,7 @@ type Client struct {
 	Ready       bool   `json:"ready"`
 	CurrentTurn bool   `json:"currentTurn"`
 	Board       *Board `json:"board"`
+	Score       int    `json:"score"`
 	time        time.Time
 }
 
@@ -170,7 +171,7 @@ func wsPage(rw http.ResponseWriter, req *http.Request) {
 			break
 		}
 		if msg.Type == "join" {
-			client := Client{"", false, false, initBoard(), time.Now()}
+			client := Client{"", false, false, initBoard(), 0, time.Now()}
 			err = json.Unmarshal(msg.Msg, &client)
 			fmt.Println(client.Username)
 			Lobby[gid].clients[ws] = &client
@@ -284,9 +285,14 @@ func (g *Game) updateStatus() {
 		// finalize moves and then check for end game status
 		g.finalizeMoves()
 		//If finished set finish flag
-
-		//If not turn is not started and set the current player
-		g.setNextPlayer()
+		isGameFinished := g.checkEndState()
+		if isGameFinished {
+			g.Finished = true
+			g.score()
+		} else {
+			//If not turn is not started and set the current player
+			g.setNextPlayer()
+		}
 	} else if ready {
 		// Turn the started flag on and then set the starting player if there are at least two players.
 		if len(g.clients) > 1 {
@@ -356,6 +362,41 @@ func (g *Game) lockDie(action Action) {
 	}
 }
 
+func (g *Game) checkEndState() bool {
+	i := 0
+	if g.Die.RedLock {
+		i++
+	}
+	if g.Die.YellowLock {
+		i++
+	}
+	if g.Die.GreenLock {
+		i++
+	}
+	if g.Die.GreenLock {
+		i++
+	}
+	if i >= 2 {
+		return true
+	}
+	for _, client := range g.clients {
+		i = 0
+		for j := 0; j < 4; j++ {
+			i += client.Board.Rows[4][j]
+		}
+		if i == 4 {
+			return true
+		}
+	}
+	return false
+}
+
+func (g *Game) score() {
+	for _, client := range g.clients {
+		client.Score = client.Board.score()
+	}
+}
+
 /*
  * Board Functions
  */
@@ -374,6 +415,27 @@ func initBoard() *Board {
 	return &Board{rows, []Action{}}
 }
 
+func (b *Board) score() int {
+	score := 0
+	for i := 0; i < 4; i++ {
+		rowCount := 0
+		for j := 0; j < 12; j++ {
+			if b.Rows[i][j] == 1 {
+				rowCount++
+			}
+		}
+		score += firstNSum(rowCount)
+	}
+	return score
+}
+
+func firstNSum(n int) int {
+	sum := 0
+	for i := 1; i <= n; i++ {
+		sum += i
+	}
+	return sum
+}
 func (a Action) equals(other Action) bool {
 	return (a.Row == other.Row) && (a.Col == other.Col)
 }
@@ -468,7 +530,21 @@ func (c *Client) tryAction(action Action, gid string) {
 			}
 		} else {
 			//We are deleting here and we want to make sure we dont delete same row
-			//sameRow := c.Board.isSameRow(action)
+			isValid := c.Board.isValidDelete(action)
+			if isValid {
+				//Check to see if the delete is the rightmost action
+				fmt.Println("We delete here ")
+				i := 0
+				for _, other := range c.Board.actions {
+					if !action.equals(other) {
+						c.Board.actions[i] = other
+						i++
+					}
+				}
+				c.Board.actions = c.Board.actions[:i]
+				c.Board.Rows[action.Row][action.Col] = 0
+				return
+			}
 		}
 	}
 }
@@ -500,6 +576,17 @@ func (b *Board) isValidSameRow(action Action) bool {
 	} else {
 		return false
 	}
+}
+
+func (b *Board) isValidDelete(action Action) bool {
+	if action.Col == 10 {
+		for _, other := range b.actions {
+			if action.Row == other.Row && other.Col == 11 {
+				return false
+			}
+		}
+	}
+	return true
 }
 
 //Attempts to lock out the row. If the farmost right is locked then
