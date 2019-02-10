@@ -335,7 +335,24 @@ func (g *Game) setStartingPlayer() {
 
 func (g *Game) finalizeMoves() {
 	for _, val := range g.clients {
+		for _, action := range val.Board.actions {
+			if action.Col == 11 {
+				g.lockDie(action)
+			}
+		}
 		val.Board.actions = []Action{}
+	}
+}
+
+func (g *Game) lockDie(action Action) {
+	if action.Col == 0 {
+		g.Die.RedLock = true
+	} else if action.Row == 1 {
+		g.Die.YellowLock = true
+	} else if action.Row == 2 {
+		g.Die.GreenLock = true
+	} else if action.Row == 3 {
+		g.Die.BlueLock = true
 	}
 }
 
@@ -414,6 +431,11 @@ func (c *Client) tryAction(action Action, gid string) {
 					if !validRightmost {
 						return
 					}
+				}
+				// Now we check to see if the row is locked
+				isLocked := isLocked(action, Lobby[gid].Die)
+				if isLocked {
+					return
 				}
 				//This is a non lock opperation. We assume someone can lock at any time
 				fmt.Println("We are attempting a non locking opperation")
@@ -518,18 +540,13 @@ func (b *Board) tryRegularInsert(action Action, gid string) {
 	 * in the current row of their board. If so we make the move and add the
 	 * action to the list. If not do nothing.
 	 */
-	game := Lobby[gid]
-	isLocked := isLocked(action, game.Die)
-	//If its not locked we go for it
-	if !isLocked {
-		for i := len(b.Rows[action.Row]) - 1; i >= action.Col; i-- {
-			if b.Rows[action.Row][i] == 1 {
-				return
-			}
+	for i := len(b.Rows[action.Row]) - 1; i >= action.Col; i-- {
+		if b.Rows[action.Row][i] == 1 {
+			return
 		}
-		b.actions = append(b.actions, action)
-		b.Rows[action.Row][action.Col] = 1
 	}
+	b.actions = append(b.actions, action)
+	b.Rows[action.Row][action.Col] = 1
 }
 
 func (b *Board) validRightmost(action Action) bool {
