@@ -351,7 +351,7 @@ func (g *Game) finalizeMoves() {
 }
 
 func (g *Game) lockDie(action Action) {
-	if action.Col == 0 {
+	if action.Row == 0 {
 		g.Die.RedLock = true
 	} else if action.Row == 1 {
 		g.Die.YellowLock = true
@@ -426,7 +426,13 @@ func (b *Board) score() int {
 		}
 		score += firstNSum(rowCount)
 	}
-	return score
+	skipCount := 0
+	for i := 0; i < 4; i++ {
+		if b.Rows[4][i] == 1 {
+			skipCount++
+		}
+	}
+	return score - 5*skipCount
 }
 
 func firstNSum(n int) int {
