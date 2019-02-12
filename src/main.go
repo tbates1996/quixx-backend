@@ -377,7 +377,7 @@ func (g *Game) checkEndState() bool {
 	if g.Die.GreenLock {
 		i++
 	}
-	if g.Die.GreenLock {
+	if g.Die.BlueLock {
 		i++
 	}
 	if i >= 2 {
