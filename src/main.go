@@ -174,7 +174,11 @@ func wsPage(rw http.ResponseWriter, req *http.Request) {
 			client := Client{"", false, false, initBoard(), 0, time.Now()}
 			err = json.Unmarshal(msg.Msg, &client)
 			fmt.Println(client.Username)
-			Lobby[gid].clients[ws] = &client
+			if len(Lobby[gid].clients) < 5 {
+				Lobby[gid].clients[ws] = &client
+			} else {
+				ws.WriteJSON(Message{"error", nil})
+			}
 		} else if msg.Type == "ready" {
 			//Only time we dont want to ready up is if game is started and we are waiting for a roll aka turn started
 			// We also dont want to let the current player ready if no moves have been made
@@ -215,7 +219,7 @@ func handler(rw http.ResponseWriter, req *http.Request) {
 	case "GET":
 		m := make([]*Game, 0, len(Lobby))
 		for _, val := range Lobby {
-			if !val.Started {
+			if !val.Started && len(val.clients) < 5 {
 				m = append(m, val)
 			}
 		}
